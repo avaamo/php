@@ -57,9 +57,6 @@
 
   function myBot() {
 
-    $bot_uuid = "09099b3b-8b9e-42fd-99c5-8c13cc3fbfc8";
-    $access_token = "BTPUkyFh2EqKKNJyn-bpwzIvr4YQD0hd";
-
     //BOT UUID goes here
     // $bot_uuid = "<bot-uuid>";
 
