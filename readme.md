@@ -113,19 +113,19 @@ Inside the callback, the Avaamo object is provided to send message back to the c
 //Send text message back to the same conversation
 $avaamo->sendMessage("Hello user!", $msg->conversation->uuid);
 ```
-![Send Text](/avaamo/php/raw/master/screenshots/text.png)
+![Send Text](/screenshots/text.png)
 
 ```
 //Send a file back to the same conversation
 $avaamo->sendFile("<path to your local file>", $msg->conversation->uuid);
 ```
-![Send file](/avaamo/php/raw/master/screenshots/file.png)
+![Send file](/screenshots/file.png)
 
 ```
 //Send an image back to the same conversation
 $avaamo->sendImage("<path to image>", "<Caption for image or Can be left empty>", $msg->conversation->uuid);
 ```
-![Send image](/avaamo/php/raw/master/screenshots/image.png)
+![Send image](/screenshots/image.png)
 
 ```
 //Send a card back to the same conversation
@@ -141,7 +141,7 @@ $card = array(
 );
 $avaamo->sendCard($card, "This is a sample card with rich text description, web link and deep links", $msg->conversation->uuid);
 ```
-![Send Card](/avaamo/php/raw/master/screenshots/card.png)
+![Send Card](/screenshots/card.png)
 
 You might be wondering "what is a card?". The card is a structured message type. It can have a title, description, showcase image and set of links. Links make the card very special. One can avoid natural language, context based interaction with the help of these links.
 
