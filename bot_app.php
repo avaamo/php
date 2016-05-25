@@ -1,5 +1,5 @@
 <?php
-  require("avaamo.php");
+  require("lib/avaamo.php");
   function printMessage($msg, $avaamo) {
     //message is received here
     //Do any processing here
@@ -14,16 +14,16 @@
         $avaamo->sendMessage("Hello $name", $msg->conversation->uuid);
         break;
       case "IMAGE":
-        $avaamo->sendImage("superman.jpg", "I am Clark Kent. I have another name - Kal. I am the SUPERMAN.", $msg->conversation->uuid);
+        $avaamo->sendImage("assets/superman.jpg", "I am Clark Kent. I have another name - Kal. I am the SUPERMAN.", $msg->conversation->uuid);
         break;
       case "FILE":
-        $avaamo->sendFile("relativity.pdf", $msg->conversation->uuid);
+        $avaamo->sendFile("assets/relativity.pdf", $msg->conversation->uuid);
         break;
       case "CARD":
         $card = array(
           "title" => "Card Title",
           "description" => "Card Description. This has minimal rich text capabilities as well. For example <b>Bold</b> <i>Italics</i>",
-          "showcase_image_path" => "welcome.jpg",
+          "showcase_image_path" => "assets/welcome.jpg",
           "links" => array(
             Link::get_auto_send_message_link("Post a Message", "Sample Action"),
             Link::getWebpageLink("Web URL", "http://www.avaamo.com"),
@@ -42,7 +42,7 @@
     }
   }
 
-  function printAck($ack) {
+  function printAck($ack, $avaamo) {
     //acks are printed here.
     //Do your processing with the ack right here.
 
@@ -57,11 +57,14 @@
 
   function myBot() {
 
+    $bot_uuid = "09099b3b-8b9e-42fd-99c5-8c13cc3fbfc8";
+    $access_token = "BTPUkyFh2EqKKNJyn-bpwzIvr4YQD0hd";
+
     //BOT UUID goes here
-    $bot_uuid = "<bot-uuid>";
+    // $bot_uuid = "<bot-uuid>";
 
     //BOT access token goes here
-    $access_token = "<bot-access-token>";
+    // $access_token = "<bot-access-token>";
 
     new Avaamo($bot_uuid, $access_token, 'printMessage', 'printAck');
   }
