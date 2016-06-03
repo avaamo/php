@@ -4,7 +4,9 @@ This is Avaamo Bot SDK written in PHP for implementing custom Bots using Avaamo 
 
 To implement a custom bots, you need to have [Avaamo Premium] account.
 
-Once you are familiar with Avaamo Premium Dashboard, create a bot from the dashboard and grab the bot-uuid and access-token.
+To get started with the bot creation, refer [the getting started] guide.
+
+Once you have created the bot, grab the bot-uuid and access-token as given in the previous guide.
 
 This repository will help you to implement a custom bot with samples written in PHP.
 
@@ -14,11 +16,12 @@ The `bot_app.php` file is the sample bot application which has the example code.
 
 ## Pre-requisite
 Environment where PHP can be executed.
+PHP Version: 5.5
 Novice level PHP knowledge would be good enough.
 
 To give a bit of an overview about the bot implementation, bots are treated as another user in the Avaamo platform. Once you create a bot from the dashboard, it will appear in the Avaamo messaging application for your group of users or your company members. Any user from your group/company can send message to the bot. How will the bot respond to the messages sent to it? This repository is built to answer this question.
 
-Any messages sent to the bot can be intercepted and replied more sensibly to solve your business needs. The implementation is a 4 step process:
+Any messages sent to the bot can be intercepted and replied more sensibly to solve your business needs. The implementation is a 5 step process:
 
 ## Step 1: Including the SDK file
 To use the SDK, you have to copy the files in the `lib` directory into one of your implementation directories and require the SDK file `avaamo.php` as given below:
@@ -33,13 +36,13 @@ The Avaamo SDK exposes the primary class `Avaamo` which takes 4 arguments: bot-u
 ```
 function myBot() {
   //BOT UUID goes here
-  // $bot_uuid = "<BOT-UUID from dashboard>";
+  $bot_uuid = "";
 
   //BOT access token goes here
-  // $access_token = "<BOT-ACCESS_TOKEN from dashboard>";
+  $access_token = "";
 
-  //Signature: new Avaamo(<Bot-uuid>, <Bot-access-token>, <onMessageCallback>, <onAcknowledgementCallback>);
-  new Avaamo($bot_uuid, $access_token, 'printMessage', 'printAck');
+  //Signature: new Avaamo(<Bot-uuid>, <Bot-access-token>, <onMessageCallback>, <onAcknowledgementCallback>, <onActivityCallback>);
+  new Avaamo($bot_uuid, $access_token, 'printMessage', 'printAck', 'printAcitivity');
 }
 myBot();
 ```
@@ -47,62 +50,182 @@ myBot();
 ## Step 3: Implementing Message Callbacks
 This step involves two sub-steps.
 
-### 3.1 Understanding the message
+### 3.1 Understanding the message object
 The callback should take two parameters: the message object and the Avaamo object(object instantiated in the previous step).
 
-The message object contains the message sent by the users of your bot. It has other supporting information also. Feel free to print and check the fields inside the object. The structure of a typical message with file attachment is given below:
+```
+function printMessage($payload, $avaamo) {
+  //Process incoming message
+  //Reply back to the conversation
+}
+```
+
+The first argument which is the message object has 3 properties: `message`, `user` and `conversation`. We will focus only on the `message` property which has all required information.
+
+The `message` property is of type `Message` which has the following member variables and methods:
 
 ```
-  {
-    "uuid": "cd77d610-225b-11e6-b798-e7a357b7aece",
-    "content": "",
-    "content_type": "file",
-    "created_at": 1464168836.769,
-    "user": {
-      "first_name": "Jebin",
-      "last_name": "B V",
-      "layer_id": "ce78d710-225b-22e6-b798-e7a357b7a123",
-      "email": "xyxy@yahooya.com"
-    },
-    "attachments": {
-      "files": [
-        {
-          "name": "ExBoxes.js",
-          "type": "unknown",
-          "size": 3713,
-          "content_type": "text/javascript",
-          "uid": 4212,
-          "uuid": 4212,
-          "preview": false,
-          "meta": null
-        }
-      ]
-    },
-    "conversation": {
-      "uuid": "1c76c16d6f5e5b2647d4adb180ef156d",
-      "mode": false
+//Get the message object
+$message = $payload->message;
+
+//MEMBER VARIABLES
+$message->content
+$message->content_type
+$message->attachments
+$message->conversation_uuid
+$message->uuid
+$message->created_at
+
+//METHODS
+
+//returns the message content
+$message->getContent()
+
+//returns the message content type which could be one of these strings:
+//"text","file","video","audio","photo""image","form_response"
+$message->getContentType()
+
+//returns the message sender object
+//This object has the first_name, last_name, email, phone
+$message->getSender()
+
+//returns the sender name in string
+//It takes a default name as argument which is a fallback if user object has no first or last names
+$message->getSenderName($default_name = "")
+
+//returns message uuid; a unique identifier for message
+$message->getUuid()
+
+//returns the conversation uuid of the message; a unique identifier for conversation
+$message->getConversationUuid()
+
+//returns the message created time in timestamp format with seconds precision
+$message->getCreatedAt()
+
+//returns boolean indicating if there is attachment with the message
+$message->hasAttachment()
+
+//returns the `content_type` of the message if the message has any of the attachment types.
+//If the message is of `content_type` text, this method will return null
+$message->whichAttachment()
+
+//returns boolean if message has attachment of type image
+$message->hasImage()
+
+//returns boolean if message has attachment of type file
+$message->hasFile()
+
+//returns boolean if message has attachment of type photo
+$message->hasPhoto()
+
+//returns boolean if message has attachment of type audio
+$message->hasAudio()
+
+//returns boolean if message has attachment of type video
+$message->hasVideo()
+
+//returns boolean if message has attachment of type form_response
+$message->hasForm()
+
+//returns boolean if message has attachment of type text
+$message->isText()
+```
+
+#### Attachments
+You might want the bot to handle attachments in a sensible manner. The attachment property of the message object has convenient methods to access the attachments. Every message with attachment has `downloadAll` method to download the attachments to specified location.
+
+```
+if($message->hasAttachment()) {
+  //download all downloadable attachments to the specified path including form response.
+  //if form response has downloadable attachment like file or image, they are downloaded too with this method.
+  $message->attachments->downloadAll($path, $permission);
+}
+```
+Note: The path given will be created with 0777 permission if doesn't exist.
+
+#### Form Response Attachment
+Attachment type `form_response` is little different as they have both text and downloadable content. Moreover, the form response has multiple questions and corresponding responses. You can access them as given below:
+
+```
+if($message->hasForm()) {
+  /* calling **getFormResponse** on attachments in case of form response attachment will return all array of associated questions and replies.
+
+  Each element of this array is of type Reply. The object of type Reply has the following methods to access the reply values:
+
+  Returns boolean checking if the reply for this question has any downloadable asset.
+  $reply->hasAttachments()
+
+  Returns boolean after downloading the downloadable attachments if present
+  $reply->downloadAttachments($path, $permission = 0777)
+
+  Returns the question object of the reply which has title of the question
+  $reply->getQuestion()
+
+  Returns the actual answer entered by the user in the form for this question.
+  This might return string or array based on the question type.
+  $reply->getResponse()
+  */
+
+  $form_response = $message->attachments->getFormResponse();
+  foreach($form_response as $reply) {
+    $answer = $reply->getResponse();
+    if(is_array($answer)) {
+      $answer = implode(", ", $answer);
     }
+    $replies .= $reply->question->title." :: ".$answer."\n";
   }
+}
 ```
 
-To give you a fair idea of what is in the object, it has the following properties:
+On the attachments property, you can call methods like getForm, getReplies, getQuestions, getQuestionsReplies and download.
 
-`content` - The actual message content sent by the user (hi, hello, whatever). This will be can be empty for few content types.
+If you want to know more about the forms itself(not form just response), call getForm method on the attachments property and it will return an object of type FormResponse which has the following methods to access the form:
 
-`content_type` - The `content_type` will have one of the following values (text, file, richtext, image, photo, video, audio, contact, location, form_response)
-    Based on the `content_type` will help you to identify the type of the message and act accordingly. Other than text and richtext, all the content_type indicates there is an attachment sent.
+```
+//Returns form title
+$message->attachments->getForm()->getTitle()
 
-`attachments` - This field will be empty for text and richtext. In case of non text `content_type`, this field will have a corresponding object.
+//Returns form description
+$message->attachments->getForm()->getDescription()
 
-`user` - This field helps to capture the message sender details like name, email, user_uuid, and phone.
+//Returns form uuid
+$message->attachments->getForm()->getUuid()
 
-`conversation` - This field gives the conversation uuid. This uuid can be used to post messages back to the same conversation.
+//Returns form replies only which is array of stdClass objects
+$message->attachments->getForm()->getReplies()
 
-`created_at` - Message created time in timestamp(seconds)
+//Returns form questions only which is array of stdClass objects
+$message->attachments->getForm()->getQuestions()
 
-`uuid` - unique identifier for the message
+//Returns sender object which is a stdClass objects having properties first_name, last_name, email, phone
+$message->attachments->getForm()->getSender()
 
-You can use these fields to keep track of the messages and extract information out of them to help the bot respond sensibly.
+//alias for getReplies
+$message->attachments->getForm()->getAllResponses()
+
+//Returns boolean and downloads all downloadable attachments to specified path
+$message->attachments->getForm()->downloadAllResponseAttachments($path, $permission = 0777)
+
+//Returns question object at given positions. Returns null if position is beyond number of questions
+//Starts with 0 index
+$message->attachments->getForm()->getQuestionAtPosition($position)
+
+//Returns reply object at given positions. Returns null if position is beyond number of questions
+//Starts with 0 index
+$message->attachments->getForm()->getReplyAtPosition($position)
+
+//Returns boolean if the given position exists. Returns null if position is beyond number of questions
+//Downloads only the attachments at given question position.
+//Starts with 0 index
+$message->attachments->getForm()->downloadAttachmentsAtPosition($position, $path, $permission = 0777)
+
+//Returns the answer entered by the user if the given position exists. Returns null if position is beyond number of questions
+//In case of image type questions, returns the name of the image as string or array if it is image group
+//Starts with 0 index
+$message->attachments->getForm()->getResponseAtPosition($position)
+```
+
+All these methods are of highly useful to read the form responses within the bot and response accordingly.
 
 ### Step 3.2 Responding back to the message
 Next critical part of the callback is to respond to the incoming messages. Once you extract the information from the message, you want to reply back with messages which can be text, file, image or card. The sample code in `bot_app.php` has example for each case.
@@ -113,19 +236,19 @@ Inside the callback, the Avaamo object is provided to send message back to the c
 //Send text message back to the same conversation
 $avaamo->sendMessage("Hello user!", $msg->conversation->uuid);
 ```
-<img alt="text" src="/screenshots/text.png" width="500" />
+![Send Text](/screenshots/text.png)
 
 ```
 //Send a file back to the same conversation
 $avaamo->sendFile("<path to your local file>", $msg->conversation->uuid);
 ```
-<img alt="file" src="/screenshots/file.png" width="500" />
+![Send file](/screenshots/file.png)
 
 ```
 //Send an image back to the same conversation
 $avaamo->sendImage("<path to image>", "<Caption for image or Can be left empty>", $msg->conversation->uuid);
 ```
-<img alt="image" src="/screenshots/image.png" width="500" />
+![Send image](/screenshots/image.png)
 
 ```
 //Send a card back to the same conversation
@@ -141,11 +264,11 @@ $card = array(
 );
 $avaamo->sendCard($card, "This is a sample card with rich text description, web link and deep links", $msg->conversation->uuid);
 ```
-<img alt="card" src="/screenshots/card.png" width="500" />
+![Send Card](/screenshots/card.png)
 
 You might be wondering "what is a card?". The card is a structured message type. It can have a title, description, showcase image and set of links. Links make the card very special. One can avoid natural language, context based interaction with the help of these links.
 
-#### Links
+##### Links
 Avaamo supports two types of links: Web links and Deep links.
 
 Web links are usual web page link and it is opened in a browser(webview in case of mobile).
@@ -215,80 +338,35 @@ function printAck($ack, $avaamo) {
 }
 ```
 
-When you combine these four steps, you have a bot ready. You can execute the sample app using the command `php bot_app.php` after filling the bot-uuid and access-token.
+## Step 5: Implementing Activity callback
+Might not be very useful, but if in case you want to do something as soon the user launches the bot, like sending a welcome note, this callback will help a lot.
 
-Full sample source can be found below:
+This callback is also called with two arguments: the activity object and the Avaamo object.
+
+The activity object has `user` field, similar to the message object which has the information about the user who has launched the bot. It also has what time he/she has launched the bot and what activity type it is. The activity type will be "user_visit" as of now. It could change later. The following callback prints a message whenever the user visits the bot:
 
 ```
-<?php
-  require("lib/avaamo.php");
-  function printMessage($msg, $avaamo) {
-    //message is received here
-    //Do any processing here
-    $name = "user";
-    if($msg->user) {
-      $name = $msg->user->first_name." ".$msg->user->last_name;
-    }
-    echo "\n==> ".$name.": ". $msg->message->content."\n";
-
-    switch (strtoupper($msg->message->content)) {
-      case "HI":
-        $avaamo->sendMessage("Hello $name", $msg->conversation->uuid);
-        break;
-      case "IMAGE":
-        $avaamo->sendImage("assets/superman.jpg", "I am Clark Kent. I have another name - Kal. I am the SUPERMAN.", $msg->conversation->uuid);
-        break;
-      case "FILE":
-        $avaamo->sendFile("assets/relativity.pdf", $msg->conversation->uuid);
-        break;
-      case "CARD":
-        $card = array(
-          "title" => "Card Title",
-          "description" => "Card Description. This has minimal rich text capabilities as well. For example <b>Bold</b> <i>Italics</i>",
-          "showcase_image_path" => "assets/welcome.jpg",
-          "links" => array(
-            Link::get_auto_send_message_link("Post a Message", "Sample Action"),
-            Link::getWebpageLink("Web URL", "http://www.avaamo.com"),
-            Link::get_go_to_forms_link("Open a Form", "63c906c3-553e-9680-c273-28d1e54da050", "Say Yes")
-          )
-        );
-        $avaamo->sendCard($card, "This is a sample card with rich text description, web link and deep links", $msg->conversation->uuid);
-        break;
-      case "SAMPLE ACTION":
-        $avaamo->sendMessage("Lopadotemachoselachogaleokranioleipsanodrimhypotrimmatosilphioparaomelitokatakechymenokichlepikossyphophattoperisteralektryonoptekephalliokigklopeleiolagoiosiraiobaphetraganopterygon", $msg->conversation->uuid);
-        $avaamo->sendMessage("No. I am not scolding you in my language. This is longest word ever to appear in literature.", $msg->conversation->uuid);
-        break;
-      default:
-        $avaamo->sendMessage("Awesome. It works!. \nType one of the following to see them in action. \nimage \nfile \ncard", $msg->conversation->uuid);
-        break;
-    }
+function printAcitivity($activity, $avaamo) {
+  date_default_timezone_set('Asia/Kolkata');
+  $name = "User";
+  $event = null;
+  if($activity->user) {
+    $name = $activity->user->first_name." ".$activity->user->last_name;
   }
-
-  function printAck($ack, $avaamo) {
-    //acks are printed here.
-    //Do your processing with the ack right here.
-
-    date_default_timezone_set('Asia/Kolkata');
-    $name = "Nobody";
-    if($ack->user) {
-      $name = $ack->user->first_name." ".$ack->user->last_name;
-    }
-    $date = date("d/m/Y H:iA", $ack->read_ack->read_at);
-    echo "\n===> Messae read by << $name >> at $date\n";
+  if($activity->type === "user_visit") {
+    $event = "visited";
   }
-
-  function myBot() {
-
-    //BOT UUID goes here
-    $bot_uuid = "<bot-uuid>";
-
-    //BOT access token goes here
-    $access_token = "<bot-access-token>";
-
-    new Avaamo($bot_uuid, $access_token, 'printMessage', 'printAck');
-  }
-  myBot();
-?>
+  $date = date("d/m/Y H:iA", $activity->created_at);
+  echo "\n==> $name $event me at $date\n";
+}
 ```
+
+Note: All these callbacks are mandatory and are called with the php function `call_user_func` injecting the corresponding object and the $avaamo instance.
+
+Note: The bot will acknowledge any message as soon as it receives one without any additional code.
+
+When you combine these five steps, you have a bot ready. You can execute the sample app using the command `php bot_app.php` after filling the bot-uuid and access-token. [Click here to see the full code sample].
 
 [Avaamo Premium]: http://www.avaamo.com/premium.html
+[the getting started]: https://github.com/avaamo/java/wiki
+[Full sample can be found here]: https://github.com/avaamo/php/blob/master/bot_app.php
