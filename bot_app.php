@@ -1,23 +1,24 @@
 <?php
   require("lib/avaamo.php");
-  function printMessage($msg, $avaamo) {
+  function printMessage($payload, $avaamo) {
     //message is received here
     //Do any processing here
-    $name = "user";
-    if($msg->user) {
-      $name = $msg->user->first_name." ".$msg->user->last_name;
-    }
-    echo "\n==> ".$name.": ". $msg->message->content."\n";
 
-    switch (strtoupper($msg->message->content)) {
+    $name = $payload->message->getSenderName("User");
+    $path = "./assets/downloads";
+    $content = $payload->message->hasAttachment() ? $payload->message->whichAttachment() : $payload->message->getContent();
+    $conversation_uuid = $payload->message->getConversationUuid();
+    echo "\n==> ".$name.": ". $content."\n";
+
+    switch (strtoupper($payload->message->getContent())) {
       case "HI":
-        $avaamo->sendMessage("Hello $name", $msg->conversation->uuid);
+        $avaamo->sendMessage("Hello $name", $conversation_uuid);
         break;
       case "IMAGE":
-        $avaamo->sendImage("assets/superman.jpg", "I am Clark Kent. I have another name - Kal. I am the SUPERMAN.", $msg->conversation->uuid);
+        $avaamo->sendImage("assets/superman.jpg", "I am Clark Kent. I have another name - Kal. I am the SUPERMAN.", $conversation_uuid);
         break;
       case "FILE":
-        $avaamo->sendFile("assets/relativity.pdf", $msg->conversation->uuid);
+        $avaamo->sendFile("assets/relativity.pdf", $conversation_uuid);
         break;
       case "CARD":
         $card = array(
@@ -27,17 +28,36 @@
           "links" => array(
             Link::get_auto_send_message_link("Post a Message", "Sample Action"),
             Link::getWebpageLink("Web URL", "http://www.avaamo.com"),
-            Link::get_go_to_forms_link("Open a Form", "63c906c3-553e-9680-c273-28d1e54da050", "Say Yes")
+            Link::get_go_to_forms_link("Open a Form", "8e893b85-f206-4156-ae49-e917d584bcf3", "Rate Me")
           )
         );
-        $avaamo->sendCard($card, "This is a sample card with rich text description, web link and deep links", $msg->conversation->uuid);
+        $avaamo->sendCard($card, "This is a sample card with rich text description, web link and deep links", $conversation_uuid);
         break;
       case "SAMPLE ACTION":
-        $avaamo->sendMessage("Lopadotemachoselachogaleokranioleipsanodrimhypotrimmatosilphioparaomelitokatakechymenokichlepikossyphophattoperisteralektryonoptekephalliokigklopeleiolagoiosiraiobaphetraganopterygon", $msg->conversation->uuid);
-        $avaamo->sendMessage("No. I am not scolding you in my language. This is longest word ever to appear in literature.", $msg->conversation->uuid);
+        $avaamo->sendMessage("Lopadotemachoselachogaleokranioleipsanodrimhypotrimmatosilphioparaomelitokatakechymenokichlepikossyphophattoperisteralektryonoptekephalliokigklopeleiolagoiosiraiobaphetraganopterygon", $conversation_uuid);
+        $avaamo->sendMessage("No. I am not scolding you in my language. This is longest word ever to appear in literature.", $conversation_uuid);
         break;
       default:
-        $avaamo->sendMessage("Awesome. It works!. \nType one of the following to see them in action. \nimage \nfile \ncard", $msg->conversation->uuid);
+        if($payload->message->hasAttachment()) {
+          $payload->message->attachments->downloadAll($path);
+          $avaamo->sendMessage("I have got ".$payload->message->whichAttachment()." attachment", $conversation_uuid);
+          if($payload->message->hasForm()) {
+            echo "\n==> Form attachment!\n";
+            $replies = "";
+            foreach($payload->message->attachments->getFormResponse() as $response) {
+              $answer = $response->getResponse();
+              if(is_array($answer)) {
+                $answer = implode(", ", $answer);
+              }
+              $replies .= $response->question->title." :: ".$answer."\n";
+            }
+            echo $replies;
+            echo "\n==> Form attachment ends!";
+            $avaamo->sendMessage("Confirm your replies: \n".$replies, $conversation_uuid);
+          }
+        } else {
+          $avaamo->sendMessage("Awesome. It works!. \nType one of the following to see them in action. \nimage \nfile \ncard", $conversation_uuid);
+        }
         break;
     }
   }
@@ -55,15 +75,28 @@
     echo "\n===> Messae read by << $name >> at $date\n";
   }
 
-  function myBot() {
+  function printAcitivity($activity, $avaamo) {
+    date_default_timezone_set('Asia/Kolkata');
+    $name = "User";
+    $event = null;
+    if($activity->user) {
+      $name = $activity->user->first_name." ".$activity->user->last_name;
+    }
+    if($activity->type === "user_visit") {
+      $event = "visited";
+    }
+    $date = date("d/m/Y H:iA", $activity->created_at);
+    echo "\n==> $name $event me at $date\n";
+  }
 
+  function myBot() {
     //BOT UUID goes here
-    // $bot_uuid = "<bot-uuid>";
+    $bot_uuid = "";
 
     //BOT access token goes here
-    // $access_token = "<bot-access-token>";
+    $access_token = "";
 
-    new Avaamo($bot_uuid, $access_token, 'printMessage', 'printAck');
+    new Avaamo($bot_uuid, $access_token, 'printMessage', 'printAck', 'printAcitivity');
   }
 
   myBot();

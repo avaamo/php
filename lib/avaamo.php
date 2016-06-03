@@ -6,11 +6,9 @@
   *   Description: Class to initialize and communicate to avaamo server
  */
 
-define(HOST, "https://ds.avaamo.com");
-define(APP_SERVER_HOST, "https://prod.avaamo.com/s");
-
 require 'utils.php';
 require 'attachment.php';
+require 'message.php';
 
 class Avaamo {
 
@@ -18,7 +16,6 @@ class Avaamo {
   protected $logger = false;
   private $bot_uuid = "";
   private $access_token = "";
-  private $DS_HOST = HOST;
 
   private static $HAS_CONTENT = 200;
   private static $NO_CONTENT = 204;
@@ -28,33 +25,55 @@ class Avaamo {
 
   private $CHANNELS = array();
   private $messages_channel = "";
+  private $activity_channel = "";
 
   private static $EVENT_JOIN = "phx_join";
   private static $EVENT_MESSAGE = "message";
   private static $EVENT_REPLY = "phx_reply";
 
-  public function __construct($bot_uuid, $access_token, $onMessageCallback, $onReadAckCallback, $logger = false) {
-    $this->logger = new Logger($logger);
-    $this->bot_uuid = $bot_uuid;
-    $this->access_token = $access_token;
-    $this->onMessageCallback = $onMessageCallback;
-    $this->onReadAckCallback = $onReadAckCallback;
+  public static $MESSAGE_CONTENT_TYPE_TEXT = "text";
+  public static $MESSAGE_CONTENT_TYPE_RICHTEXT = "richtext";
+  public static $MESSAGE_CONTENT_TYPE_FILE = "file";
+  public static $MESSAGE_CONTENT_TYPE_VIDEO = "video";
+  public static $MESSAGE_CONTENT_TYPE_AUDIO = "audio";
+  public static $MESSAGE_CONTENT_TYPE_PHOTO = "photo";
+  public static $MESSAGE_CONTENT_TYPE_IMAGE = "image";
+  public static $MESSAGE_CONTENT_TYPE_LINK = "link";
+  public static $MESSAGE_CONTENT_TYPE_FORM_RESPONSE = "form_response";
+  public static $MESSAGE_CONTENT_TYPE_DEFAULT_CARD = "default_card";
+  public static $MESSAGE_CONTENT_TYPE_SMART_CARD = "smart_card";
 
-    $this->DS_HOST = HOST;
+  public static $ACCESS_TOKEN = null;
+  public static $BOT_UUID = null;
+  public static $DEBUG = false;
 
-    $this->postRequestObject = new Attachment($bot_uuid, $access_token, $logger);
-    $this->imageAttachment = new ImageAttachment($bot_uuid, $access_token, $logger);
-    $this->fileAttachment = new FileAttachment($bot_uuid, $access_token, $logger);
-    $this->cardAttachment = new CardAttachment($bot_uuid, $access_token, $logger);
-
+  public function __construct($bot_uuid, $access_token, $onMessageCallback, $onReadAckCallback, $onActivityCallback, $logger = false) {
     if(!$bot_uuid) {
-      throw "Bot UUID is not passed";
+      throw new Exception("Bot UUID is not passed");
     }
     if(!$access_token) {
-      throw "Access Token is not passed";
+      throw new Exception("Access Token is not passed");
     }
+
+    API::init();
+
+    self::$DEBUG = $logger;
+    self::$BOT_UUID = $bot_uuid;
+    self::$ACCESS_TOKEN = $access_token;
+
+    $this->logger = new Logger();
+
+    $this->onMessageCallback = $onMessageCallback;
+    $this->onReadAckCallback = $onReadAckCallback;
+    $this->onActivityCallback = $onActivityCallback;
+
+    $this->imageAttachment = new ImageAttachment();
+    $this->fileAttachment = new FileAttachment();
+    $this->cardAttachment = new CardAttachment();
+
     $this->messages_channel = "messages.".$bot_uuid;
-    array_push($this->CHANNELS, $this->messages_channel);
+    $this->activity_channel = "activity.".$bot_uuid;
+    array_push($this->CHANNELS, $this->messages_channel, $this->activity_channel);
     $this->init();
   }
 
@@ -69,10 +88,10 @@ class Avaamo {
     $response = $this->fireRequestAndGetResponse();
     if($response->status == 410) {
       $this->setURL($response->token);
-      $this->logger->printLogs("Authentication successful");
+      Logger::printLogs("Authentication successful");
       return true;
     } else {
-      $this->logger->printLogs("Authentication FAILED");
+      Logger::printLogs("Authentication FAILED");
       return false;
     }
   }
@@ -87,35 +106,42 @@ class Avaamo {
       $request->ref = (string)$this->ref++;
 
       $respose = $this->fireRequestAndGetResponse($this->getContext("POST", json_encode($request)));
-      $this->logger->printLogs("Status should be 200 && it is ".$respose->status);
+      Logger::printLogs("Status should be 200 && it is ".$respose->status);
       if($respose->status == self::$STATUS_SUCCESS) {
-        $this->logger->printLogs("Join channel $value requested");
+        Logger::printLogs("Join channel $key requested");
         if($key == ($channelCount-1)) {
+          echo "Bot listening...\n";
           $this->poll();
         }
       } else {
-        $this->logger->printLogs("Join channel $value request failed");
+        Logger::printLogs("Join channel $key request failed");
       }
     }
   }
 
   private function poll() {
-    $this->logger->printLogs("Poll started");
+    Logger::printLogs("Poll started");
     do {
       $respose = $this->fireRequestAndGetResponse();
-      $this->logger->printLogs($respose);
+      Logger::printLogs("POLL_STATUS: ".$respose->status." || MESSAGE_COUNT: ".count($respose->messages));
       if(($respose->status == self::$HAS_CONTENT) && count($respose->messages) > 0) {
         foreach ($respose->messages as $value) {
           if($value->event == self::$EVENT_REPLY) {
             //TODO: Joined state identification and message sent identification
-            $this->logger->printLogs("Reply from channel $value->topic\n".json_encode($value));
+            Logger::printLogs("Reply from channel ".$value->payload->status);
           } elseif ($value->event == self::$EVENT_MESSAGE && $value->topic == $this->messages_channel) {
-            $this->logger->printLogs("Message received from channel $value->topic\n".json_encode($value));
+            Logger::printLogs("Message received from Messages channel");
             if($value->payload->pn_native) {
-              call_user_func($this->onMessageCallback, $value->payload->pn_native, $this);
+              $payload = $value->payload->pn_native;
+              $payload->message = new Message($payload);
+              $this->acknowledgeMessage($payload->message);
+              call_user_func($this->onMessageCallback, $payload, $this);
             } elseif ($value->payload->read_ack) {
               call_user_func($this->onReadAckCallback, $value->payload, $this);
             }
+          } elseif($value->event == self::$EVENT_MESSAGE && $value->topic == $this->activity_channel) {
+            Logger::printLogs("Message received from Activity channel");
+            call_user_func($this->onActivityCallback, $value->payload->activity, $this);
           }
         }
         $this->setURL($respose->token);
@@ -124,64 +150,68 @@ class Avaamo {
       } elseif($respose->status == self::$NO_CONTENT) {
         $this->setURL($respose->token);
       } elseif($respose->status == 0 || $respose->status == 500) {
-        $this->logger->printLogs("Error while receiving data");
+        Logger::printLogs("Error while receiving data");
         break;
       }
     } while (1);
   }
 
   public function sendMessage($msg, $conversation_uuid) {
+    Logger::printLogs("\n==> Sending text message...");
     $post_data = array(
-      "[message][conversation][uuid]" => $conversation_uuid,
-      "[message][user][layer_id]" => $this->bot_uuid,
-      "[message][content]" => $msg,
-      "[message][content_type]" => "text",
-      "[message][uuid]" => Utils::guidv4(),
-      "[message][created_at]" => microtime(true)
+      "message" => array(
+        "content" => $msg,
+        "content_type" => Avaamo::$MESSAGE_CONTENT_TYPE_TEXT,
+        "uuid" => Utils::guidv4(),
+        "created_at" => microtime(true),
+        "conversation" => array("uuid" => $conversation_uuid),
+        "user" => array('layer_id' => self::$BOT_UUID)
+      )
     );
-    $this->postRequestObject->post($post_data);
+    $response = Utils::POST(json_encode($post_data), null, "application/json");
+    Logger::printLogs("==> Message sending done!\n");
+    return $response;
+  }
 
-    /* via socket
-    $content = new stdClass();
-    $content->event = "message";
-    $content->ref = (string)$this->ref++;
-    $content->topic = $topic;
-    $content->payload = new stdClass();
-    $content->payload->message = new stdClass();
-    $content->payload->message->content = $msg;
-    $content->payload->message->content_type = "text";
-    $content->payload->message->uuid = Utils::guidv4();
-    $content->payload->message->created_at = microtime(true);
-    $content->payload->message->user = new stdClass();
-    $content->payload->message->user->layer_id = $this->bot_uuid;
-    $content->payload->message->conversation = new stdClass();
-    $content->payload->message->conversation->uuid = $conversation_uuid;
-    $content->payload->header = new stdClass();
-    $content->payload->header->access_token = $this->access_token;
-
-    $response = $this->fireRequestAndGetResponse($this->getContext("POST", json_encode($content)));
-    if($response->status == 200) {
-      $this->logger->printLogs("Message sent successfully");
-      return true;
-    } else {
-      return false;
-    }*/
+  private function acknowledgeMessage($message) {
+    Logger::printLogs("\n==> Acknowledging the received message...");
+    $post_data = array(
+      "read_acks" => array(
+        array(
+          "read_at" => microtime(true),
+          "message" => array(
+            "conversation_uuid" => $message->getConversationUuid(),
+            "uuid" => $message->getUuid(),
+            "user" => array("layer_id" => $message->getSender()->layer_id)
+          )
+        )
+      )
+    );
+    $response = Utils::POST(json_encode($post_data), API::$APP_SERVER_READ_ACK, "application/json");
+    Logger::printLogs("==> Acknowledgement processed!\n");
+    return $response;
   }
 
   public function sendImage($path, $caption = "", $conversation_uuid) {
+    Logger::printLogs("\n==> Sending image...");
     $this->imageAttachment->send($path, $caption, $conversation_uuid);
+    Logger::printLogs("==> Image sending done!\n");
   }
 
   public function sendFile($path, $conversation_uuid) {
+    Logger::printLogs("\n==> Sending File...");
     $this->fileAttachment->send($path, $conversation_uuid);
+    Logger::printLogs("==> File sending done!\n");
   }
 
   public function sendCard($card, $content = "", $conversation_uuid) {
+    Logger::printLogs("\n==> Sending card...");
     $this->cardAttachment->send(new Card($card), $content, $conversation_uuid);
+    Logger::printLogs("==> Card sending done!\n");
   }
 
   private function setURL($token = null) {
-    $url = "$this->DS_HOST/socket/longpoll?access_token=$this->access_token"."&vsn=1.0.0";
+    $url = API::$DS_SERVER_HOST."/socket/longpoll?access_token=".self::$ACCESS_TOKEN."&vsn=1.0.0";
     if($token) {
       $url .= ("&token=".urlencode($token));
     }
